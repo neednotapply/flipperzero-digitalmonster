@@ -1,28 +1,29 @@
-name: "FAP: Build and lint"
+name: "FAP: Build and Lint"
 
 on: [push, pull_request]
 
 jobs:
   ufbt-build-action:
-    runs-on: ubuntu-22.04
     name: 'ufbt: Build for Dev branch'
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Build with ufbt
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
         id: build-app
         with:
-          sdk-channel: dev
+          sdk-channel: dev  # Use 'release' to target the latest stable firmware
 
-      - name: Upload app artifacts
+      - name: Upload FAP Artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.event.repository.name }}-${{ steps.build-app.outputs.suffix }}
           path: ${{ steps.build-app.outputs.fap-artifacts }}
 
-      - name: Lint sources
+      - name: Lint Source Code
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
         with:
           skip-setup: true
