@@ -14,12 +14,12 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Build FAP using official SDK
-        uses: flipperdevices/flipperzero-ufbt-action@v1
+        uses: flipperdevices/flipperzero-ufbt-action@v0
         with:
-          path: .  # or change if your project is in a subdirectory
+          path: .  # or change to subdir if needed
 
       - name: Upload FAP Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: digimon-emulator-fap
+          name: digitalmonster-fap
           path: build/f7-D/faps/*.fap
