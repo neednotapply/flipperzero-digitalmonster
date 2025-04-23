@@ -14,10 +14,10 @@ jobs:
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
         id: build-app
         with:
-          sdk-channel: dev  # or 'release' if you want stability
+          sdk-channel: dev
 
       - name: Upload app artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v3.1.2
         with:
           name: ${{ github.event.repository.name }}-${{ steps.build-app.outputs.suffix }}
           path: ${{ steps.build-app.outputs.fap-artifacts }}
