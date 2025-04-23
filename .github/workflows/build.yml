@@ -1,0 +1,25 @@
+name: Build Flipper Application (FAP)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-fap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your repo
+        uses: actions/checkout@v3
+
+      - name: Build FAP using official SDK
+        uses: flipperdevices/flipperzero-ufbt-action@v1
+        with:
+          path: .  # or change if your project is in a subdirectory
+
+      - name: Upload FAP Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: digimon-emulator-fap
+          path: build/f7-D/faps/*.fap
