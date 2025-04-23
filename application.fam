@@ -1,0 +1,6 @@
+# application.fam
+manifest_version = 1
+name = MyApp
+app_id = my_app
+entry_point = main
+type = app
