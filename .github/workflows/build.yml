@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   ufbt-build-action:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     name: 'ufbt: Build for Dev branch'
     steps:
       - name: Checkout
@@ -17,7 +17,7 @@ jobs:
           sdk-channel: dev
 
       - name: Upload app artifacts
-        uses: actions/upload-artifact@latest
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ github.event.repository.name }}-${{ steps.build-app.outputs.suffix }}
           path: ${{ steps.build-app.outputs.fap-artifacts }}
