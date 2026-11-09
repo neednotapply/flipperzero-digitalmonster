@@ -1201,6 +1201,9 @@ uint32_t e0c6200_step(E0C6200* cpu) {
             cycles += interrupt(s, 0x2);
     }
 
+    /* CLKCHG = 0: CPU clocked from OSC1 (32 kHz), so 1 cycle = 1 OSC1 tick.
+     * CLKCHG = 1: CPU clocked from OSC3, so 1 cycle = 32768 / osc3_hz ticks.
+     * In counter units an OSC1 tick is osc3_hz and an OSC3 cycle is 32768. */
     int64_t units = (int64_t)cycles * ((s->ctrl_osc & IO_CLKCHG) ? E0C_OSC1_HZ : cpu->osc3_hz);
     s->osc1_counter -= units;
     while(s->osc1_counter <= 0) {
