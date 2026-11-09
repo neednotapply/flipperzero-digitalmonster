@@ -54,8 +54,13 @@ The pause menu has Sound, Speed, LCD style, Offline time, a Controls reminder,
 appears), and Save & exit.
 
 On first start the pet shows `0:00 AM SET`. Set the clock as on the real toy:
-B to start, A to change the value, B to confirm. After that the egg hatches a
-few minutes later.
+
+1. Press OK (B) to open the clock.
+2. Up / Left (A) adds an hour and OK (B) adds a minute. Hold either one to
+   fast-forward, then let go to stop.
+3. Press Down / Right (C) to start the clock.
+
+The egg hatches a couple of minutes later.
 
 ## Building
 

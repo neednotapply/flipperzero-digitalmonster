@@ -947,8 +947,16 @@ int32_t digimon_app(void* p) {
         bool busy = app->cpu != NULL;
         uint32_t timeout = busy ? furi_ms_to_ticks(LOOP_PERIOD_MS) : FuriWaitForever;
         if(app->screen == ScreenCatchup) timeout = 0;
-        if(furi_message_queue_get(app->input_queue, &ev, timeout) == FuriStatusOk) {
+        /* Handle every queued event before emulating again. While a button
+         * is held the ROM polls it nonstop (~180k instructions/s), which can
+         * be slower than real time on the Flipper. Taking one event per pass
+         * let the key Repeat events fill the queue until the Release was
+         * dropped, leaving the button held forever. Stop once the app is
+         * exiting: the CPU is already freed then. */
+        while(app->running &&
+              furi_message_queue_get(app->input_queue, &ev, timeout) == FuriStatusOk) {
             handle_input(app, &ev);
+            timeout = 0;
         }
         if(!app->running || !app->cpu) continue;
         if(app->screen == ScreenCatchup)
