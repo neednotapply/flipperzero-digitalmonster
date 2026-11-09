@@ -57,8 +57,17 @@ ufbt            # build dist/digimon.fap
 ufbt launch     # build, upload and run on a connected Flipper
 ```
 
-CI builds against official release, official dev and Momentum release
-firmware.
+CI builds a separate `.fap` for Momentum, Unleashed and official firmware
+(release and dev channel of each), downloadable from the workflow run's
+artifacts. Use the one that matches your firmware: a `.fap` built for a
+different firmware API version may refuse to load.
+
+To build locally for Momentum or Unleashed, point ufbt at their SDK index:
+
+```
+ufbt update --index-url=https://up.momentum-fw.dev/firmware/directory.json --channel=release
+ufbt update --index-url=https://up.unleashedflip.com/directory.json --channel=release
+```
 
 ## Development tools
 

@@ -10,15 +10,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: Momentum release
+            sdk-channel: release
+            sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
+          - name: Momentum dev
+            sdk-channel: dev
+            sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
+          - name: Unleashed release
+            sdk-channel: release
+            sdk-index-url: https://up.unleashedflip.com/directory.json
+          - name: Unleashed dev
+            sdk-channel: dev
+            sdk-index-url: https://up.unleashedflip.com/directory.json
           - name: Official release
             sdk-channel: release
             sdk-index-url: ""
           - name: Official dev
             sdk-channel: dev
             sdk-index-url: ""
-          - name: Momentum release
-            sdk-channel: release
-            sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
 
     steps:
       - name: Checkout repository
