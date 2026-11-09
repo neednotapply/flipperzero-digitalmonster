@@ -1,6 +1,15 @@
-# application.fam
-manifest_version = 1
-name = MyApp
-app_id = my_app
-entry_point = main
-type = app
+App(
+    appid="digimon",
+    name="Digimon",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="digimon_app",
+    requires=["gui", "storage"],
+    stack_size=4 * 1024,
+    fap_category="Games",
+    fap_icon="icons/digimon_10px.png",
+    fap_version="1.0",
+    fap_description="Digital Monster Ver.1-3 virtual pet emulator (E0C6200 core ported from BrickEmuPy)",
+    fap_author="neednotapply",
+    fap_weburl="https://github.com/neednotapply/flipperzero-digitalmonster",
+    sources=["*.c", "!tools"],
+)

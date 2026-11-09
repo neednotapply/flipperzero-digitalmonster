@@ -1,0 +1,15 @@
+# ufbt / build output
+dist/
+.vscode/
+.clang-format
+.editorconfig
+compile_commands.json
+
+# desktop test harness
+host_test
+host_test.exe
+*.pgm
+
+# ROM dumps and saves are copyrighted / personal - never commit them
+*.bin
+*.sav
