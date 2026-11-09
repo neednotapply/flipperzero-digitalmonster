@@ -4,9 +4,10 @@
  *   host_test trace  <rom.bin> <steps> [interval]   checkpoint trace (diff with ref_trace.py)
  *   host_test render <rom.bin> <script> [prefix]    run a button script, dump screenshots
  *   host_test bench  <rom.bin> <seconds> [fast]     measure emulation speed
+ *   host_test clock  <rom.bin>                      check digimon_clock_advance()
  *
  * Build (from repo root):
- *   gcc -O2 -Isrc tools/host_test.c src/e0c6200.c src/digimon_render.c -o host_test
+ *   gcc -O2 -Isrc tools/host_test.c src/e0c6200.c src/digimon_render.c src/digimon_clock.c -o host_test
  *
  * Render script lines: "<seconds> <cmd> [arg]" with cmd one of
  *   A+ A- B+ B- C+ C-   press / release a button
@@ -15,6 +16,7 @@
  *   reset               press the reset pin
  */
 #include "e0c6200.h"
+#include "digimon_clock.h"
 #include "digimon_render.h"
 
 #include <stdio.h>
@@ -199,7 +201,113 @@ static int bench(double seconds, int fast) {
     return 0;
 }
 
+/* Skipping time with digimon_clock_advance() must leave the pet in the same
+ * bedtime / wake-up state as emulating that time. The nibbles compared flip
+ * when the pet goes to bed and wakes up (found by diffing RAM across a day,
+ * same addresses in Ver.1 - Ver.3): 0x005 is 4 and 0x065 is 7 while asleep,
+ * 0x006 / 0x00D step through the going-to-bed sequence (a plain clock jump
+ * past bedtime leaves them half way). Other pet state legitimately differs,
+ * since a skip does not age the pet. */
+static const uint16_t sleep_nibbles[] = {0x005, 0x006, 0x00D, 0x065};
+
+static void run_seconds(E0C6200* cpu, uint32_t s) {
+    e0c6200_run(cpu, s * E0C_OSC1_HZ, 0);
+}
+
+static void tap(E0C6200* cpu, int mask) {
+    e0c6200_set_pin(cpu, E0CPortK0, mask, 0);
+    e0c6200_run(cpu, E0C_OSC1_HZ / 5, 0);
+    e0c6200_set_pin(cpu, E0CPortK0, mask, -1);
+    e0c6200_run(cpu, E0C_OSC1_HZ * 4 / 5, 0);
+}
+
+static void run_to(E0C6200* cpu, uint32_t sec_of_day) {
+    uint32_t t;
+    while(digimon_clock_get(cpu, &t) && t != sec_of_day)
+        e0c6200_run(cpu, E0C_OSC1_HZ / 2, 0);
+}
+
+static int clock_test(void) {
+    static E0C6200 cpu, start, natural;
+    init_cpu(&cpu);
+    cpu.fast_halt = true;
+    run_seconds(&cpu, 8);
+    /* B opens the clock, A adds an hour (from 0), C leaves: 2 PM */
+    tap(&cpu, 2);
+    for(int i = 0; i < 14; i++)
+        tap(&cpu, 4);
+    tap(&cpu, 1);
+
+    const uint32_t H = 3600, replay = 60;
+    const struct {
+        uint32_t from, to;
+    } cases[] = {
+        {18 * H + 30 * 60, 20 * H + 30 * 60}, /* across bedtime (19:00 or 20:00) */
+        {21 * H, 23 * H}, /* asleep the whole time */
+        {3 * H, 9 * H}, /* across waking up (08:00) */
+        {23 * H + 59 * 60 + 59, 1 * H}, /* starts 1 s before midnight */
+    };
+    int fails = 0;
+    for(size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        run_to(&cpu, cases[c].from);
+        start = cpu;
+        run_to(&cpu, cases[c].to);
+        natural = cpu;
+
+        cpu = start;
+        uint32_t span = (cases[c].to + DIGIMON_DAY_S - cases[c].from) % DIGIMON_DAY_S;
+        digimon_clock_advance(&cpu, span - replay);
+        run_seconds(&cpu, replay);
+
+        uint32_t t = 0;
+        digimon_clock_get(&cpu, &t);
+        int32_t dt = (int32_t)t - (int32_t)cases[c].to;
+        bool ok = dt >= -2 && dt <= 2;
+        printf(
+            "%02u:%02u -> %02u:%02u  clock %02u:%02u:%02u",
+            cases[c].from / H,
+            cases[c].from / 60 % 60,
+            cases[c].to / H,
+            cases[c].to / 60 % 60,
+            t / H,
+            t / 60 % 60,
+            t % 60);
+        for(size_t i = 0; i < sizeof(sleep_nibbles) / sizeof(sleep_nibbles[0]); i++) {
+            uint16_t a = sleep_nibbles[i];
+            printf("  %03X=%X/%X", a, cpu.s.ram[a], natural.s.ram[a]);
+            if(cpu.s.ram[a] != natural.s.ram[a]) ok = false;
+        }
+        printf("  %s\n", ok ? "ok" : "MISMATCH");
+        if(!ok) fails++;
+        cpu = natural;
+    }
+
+    /* a gap of several days only needs the clock to land in the right place */
+    cpu = natural;
+    uint32_t t0 = 0, t1 = 0;
+    digimon_clock_get(&cpu, &t0);
+    digimon_clock_advance(&cpu, 3 * DIGIMON_DAY_S + 5 * H + 7);
+    digimon_clock_get(&cpu, &t1);
+    uint32_t want = (t0 + 5 * H + 7) % DIGIMON_DAY_S;
+    bool ok = t1 == want;
+    printf(
+        "3 days + 5 h: clock %02u:%02u:%02u, want %02u:%02u:%02u  %s\n",
+        t1 / H,
+        t1 / 60 % 60,
+        t1 % 60,
+        want / H,
+        want / 60 % 60,
+        want % 60,
+        ok ? "ok" : "MISMATCH");
+    if(!ok) fails++;
+    return fails ? 1 : 0;
+}
+
 int main(int argc, char** argv) {
+    if(argc >= 3 && !strcmp(argv[1], "clock")) {
+        load_rom(argv[2]);
+        return clock_test();
+    }
     if(argc < 4) {
         fprintf(stderr, "usage: host_test trace|render|bench <rom.bin> ...\n");
         return 1;

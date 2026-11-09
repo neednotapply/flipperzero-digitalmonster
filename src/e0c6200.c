@@ -1265,3 +1265,12 @@ void e0c6200_run(E0C6200* cpu, uint32_t osc1_ticks, uint32_t max_steps) {
         if(max_steps && ++steps >= max_steps) break;
     }
 }
+
+void e0c6200_settle(E0C6200* cpu, uint32_t max_steps) {
+    E0C6200State* s = &cpu->s;
+    if(s->reset_held) return;
+    for(uint32_t i = 0; i < max_steps; i++) {
+        if(s->halt && !interrupt_pending(s)) return;
+        e0c6200_step(cpu);
+    }
+}

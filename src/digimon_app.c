@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "e0c6200.h"
+#include "digimon_clock.h"
 #include "digimon_render.h"
 
 #define TAG "Digimon"
@@ -36,11 +37,15 @@
 #define SAVE_MAGIC       0x4E4D4744u /* "DGMN" */
 #define SETTINGS_MAGIC   0x54534744u /* "DGST" */
 #define SETTINGS_VERSION 1
-#define MAX_CATCHUP_S    (14u * 24u * 3600u)
 #define AUTOSAVE_MS      (5u * 60u * 1000u)
 #define MAX_FRAME_LAG_MS 250u
 #define LOOP_PERIOD_MS   10u
-#define CATCHUP_SLICE_S  5u
+/* Offline time: the clock jumps ahead, then the last few minutes are
+ * replayed so the pet has lived a little. The replay stops early if it
+ * takes longer than CATCHUP_MAX_MS. */
+#define REPLAY_MAX_S     (10u * 60u)
+#define CATCHUP_MAX_MS   3000u
+#define CATCHUP_SLICE_S  1u
 #define SPEAKER_TIMEOUT  0u /* never stall emulation waiting for the speaker */
 
 /* Digimon buttons on port K0 */
@@ -131,8 +136,13 @@ typedef struct {
     Screen msg_return;
 
     /* Catch-up */
-    uint32_t catchup_total;
+    uint32_t away_s; /* how long the app was closed */
+    uint32_t skip_s; /* clock jump still to do before the replay */
+    uint32_t catchup_total; /* seconds to replay */
     uint32_t catchup_done;
+    uint32_t catchup_start; /* now_ms() when catching up began */
+    bool clock_sync; /* the game clock is set: keep it in step with the RTC */
+    uint32_t clock_offset; /* game time of day minus RTC time of day */
 
     Settings settings;
 
@@ -375,11 +385,11 @@ static bool save_game(DigimonApp* app) {
     return ok;
 }
 
-/* Returns seconds elapsed since the save was written, or -1 if no valid save. */
-static int64_t load_game(DigimonApp* app) {
+/* Restores the save, if there is a valid one, and returns the RTC time it was written. */
+static bool load_game(DigimonApp* app, uint32_t* saved_at) {
     char path[128];
     rom_path(path, sizeof(path), app->rom_name, ".sav");
-    int64_t elapsed = -1;
+    bool loaded = false;
     SaveHeader hdr;
     File* file = storage_file_alloc(app->storage);
     if(storage_file_open(file, path, FSAM_READ, FSOM_OPEN_EXISTING) &&
@@ -392,14 +402,14 @@ static int64_t load_game(DigimonApp* app) {
             /* buttons may have been held at autosave time: start released */
             app->cpu->s.in_low[E0CPortK0] = 0;
             app->cpu->s.in_high[E0CPortK0] = 0;
-            uint32_t now = furi_hal_rtc_get_timestamp();
-            elapsed = now > hdr.timestamp ? (int64_t)(now - hdr.timestamp) : 0;
+            *saved_at = hdr.timestamp;
+            loaded = true;
         }
         free(state);
     }
     storage_file_close(file);
     storage_file_free(file);
-    return elapsed;
+    return loaded;
 }
 
 static bool load_rom(DigimonApp* app, const char* name) {
@@ -452,7 +462,10 @@ static void start_game(DigimonApp* app, uint8_t index) {
     e0c6200_init(app->cpu, app->rom, OSC3_HZ, &mask);
     app->cpu->fast_halt = true;
 
-    int64_t elapsed = load_game(app);
+    uint32_t saved_at = 0;
+    bool loaded = load_game(app, &saved_at);
+    uint32_t now = furi_hal_rtc_get_timestamp();
+    uint32_t away = loaded && now > saved_at ? now - saved_at : 0;
     app->keys_down = 0;
     app->buttons = 0;
     app->speed = 1;
@@ -462,9 +475,20 @@ static void start_game(DigimonApp* app, uint8_t index) {
     app->tone_on = false;
     refresh_frame(app, true);
 
-    if(elapsed > 2 && app->settings.catch_up) {
-        app->catchup_total = elapsed > MAX_CATCHUP_S ? MAX_CATCHUP_S : (uint32_t)elapsed;
+    if(away > 2 && app->settings.catch_up) {
+        /* Remember how far the game clock was from the RTC when saved, so
+         * a clock the player set to some other time stays that way. The
+         * save may have been written mid tick, so finish that tick first. */
+        uint32_t game;
+        e0c6200_settle(app->cpu, DIGIMON_SETTLE_STEPS);
+        app->clock_sync = digimon_clock_get(app->cpu, &game);
+        if(app->clock_sync)
+            app->clock_offset = (game + DIGIMON_DAY_S - saved_at % DIGIMON_DAY_S) % DIGIMON_DAY_S;
+        app->away_s = away;
+        app->catchup_total = away < REPLAY_MAX_S ? away : REPLAY_MAX_S;
+        app->skip_s = app->clock_sync ? away - app->catchup_total : 0;
         app->catchup_done = 0;
+        app->catchup_start = now_ms();
         app->screen = ScreenCatchup;
     } else {
         app->screen = ScreenEmu;
@@ -488,8 +512,33 @@ static void emu_tick(DigimonApp* app) {
     if(now - app->last_save_tick > AUTOSAVE_MS) save_game(app);
 }
 
-/* Fast-forward the time the Flipper spent outside the app. */
+/* Ends catching up (done, out of time, or skipped): moves the game clock
+ * to the current time and resumes normal play. */
+static void catchup_finish(DigimonApp* app) {
+    if(app->clock_sync) {
+        uint32_t game, now = furi_hal_rtc_get_timestamp();
+        uint32_t target = (now % DIGIMON_DAY_S + app->clock_offset) % DIGIMON_DAY_S;
+        if(digimon_clock_get(app->cpu, &game)) {
+            uint32_t ahead = (target + DIGIMON_DAY_S - game) % DIGIMON_DAY_S;
+            /* a game clock a second or two fast is left alone */
+            if(ahead <= DIGIMON_DAY_S / 2) digimon_clock_advance(app->cpu, ahead);
+        }
+    }
+    app->skip_s = 0;
+    app->screen = ScreenEmu;
+    app->last_tick = now_ms();
+    app->tick_rem = 0;
+    refresh_frame(app, true);
+    view_port_update(app->view_port);
+}
+
+/* Deals with the time the Flipper spent outside the app: jump the clock to
+ * a few minutes ago, then replay those minutes. */
 static void catchup_tick(DigimonApp* app) {
+    if(app->skip_s) {
+        digimon_clock_advance(app->cpu, app->skip_s);
+        app->skip_s = 0;
+    }
     uint32_t start = now_ms();
     while(app->catchup_done < app->catchup_total && now_ms() - start < 100) {
         uint32_t slice = app->catchup_total - app->catchup_done;
@@ -497,13 +546,10 @@ static void catchup_tick(DigimonApp* app) {
         e0c6200_run(app->cpu, slice * E0C_OSC1_HZ, 0);
         app->catchup_done += slice;
     }
-    if(app->catchup_done >= app->catchup_total) {
-        app->screen = ScreenEmu;
-        app->last_tick = now_ms();
-        app->tick_rem = 0;
-        refresh_frame(app, true);
-    }
-    view_port_update(app->view_port);
+    if(app->catchup_done >= app->catchup_total || now_ms() - app->catchup_start >= CATCHUP_MAX_MS)
+        catchup_finish(app);
+    else
+        view_port_update(app->view_port);
 }
 
 /* ------------------------------------------------------------------ */
@@ -583,7 +629,7 @@ static void menu_item_text(DigimonApp* app, int item, char* out, size_t len) {
         snprintf(out, len, "LCD: < %s >", app->settings.lcd_style ? "Grid" : "Solid");
         break;
     case MenuCatchup:
-        snprintf(out, len, "Offline time: < %s >", app->settings.catch_up ? "On" : "Off");
+        snprintf(out, len, "Offline time: < %s >", app->settings.catch_up ? "Sync" : "Off");
         break;
     case MenuControls:
         snprintf(out, len, "Controls");
@@ -626,14 +672,20 @@ static void draw_catchup(Canvas* canvas, DigimonApp* app) {
     canvas_draw_str_aligned(canvas, 64, 12, AlignCenter, AlignBottom, "Catching up...");
     canvas_set_font(canvas, FontSecondary);
     char buf[40];
-    uint32_t left = app->catchup_total - app->catchup_done;
-    if(left >= 3600)
-        snprintf(buf, sizeof(buf), "%lu h %lu min to go", left / 3600, (left / 60) % 60);
+    uint32_t away = app->away_s;
+    if(away >= DIGIMON_DAY_S)
+        snprintf(buf, sizeof(buf), "Away %lu d %lu h", away / DIGIMON_DAY_S, (away / 3600) % 24);
+    else if(away >= 3600)
+        snprintf(buf, sizeof(buf), "Away %lu h %lu min", away / 3600, (away / 60) % 60);
     else
-        snprintf(buf, sizeof(buf), "%lu min %lu s to go", left / 60, left % 60);
+        snprintf(buf, sizeof(buf), "Away %lu min %lu s", away / 60, away % 60);
     canvas_draw_str_aligned(canvas, 64, 28, AlignCenter, AlignBottom, buf);
+    /* the replay usually ends on the time limit, so show whichever is further along */
     uint32_t pct = app->catchup_total ? (uint64_t)app->catchup_done * 100 / app->catchup_total :
                                         100;
+    uint32_t pct_time = (now_ms() - app->catchup_start) * 100u / CATCHUP_MAX_MS;
+    if(pct_time > pct) pct = pct_time;
+    if(pct > 100) pct = 100;
     elements_progress_bar(canvas, 8, 34, 112, (float)pct / 100.0f);
     canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "Back = skip");
 }
@@ -840,10 +892,7 @@ static void handle_input(DigimonApp* app, InputEvent* ev) {
         input_menu(app, ev);
         break;
     case ScreenCatchup:
-        if(ev->key == InputKeyBack && ev->type == InputTypeShort) {
-            app->catchup_done = app->catchup_total;
-            catchup_tick(app);
-        }
+        if(ev->key == InputKeyBack && ev->type == InputTypeShort) catchup_finish(app);
         break;
     case ScreenMessage:
         if(ev->type == InputTypeShort && (ev->key == InputKeyOk || ev->key == InputKeyBack))

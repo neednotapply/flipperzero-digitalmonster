@@ -16,9 +16,15 @@ by azya52, so timing, sound and behavior match that emulator.
   bottom row on the right)
 - Buzzer sound through the Flipper speaker (Off / Low / High). Stealth mode mutes it.
 - Saves automatically on exit and every 5 minutes, one save per ROM
-- **Offline time**: when you reopen the app, the pet fast-forwards through the
-  time it was closed (up to 14 days), so its clock and life keep going like a
-  real V-pet. You can turn this off in the menu, or press Back to skip it.
+- **Offline time**: when you reopen the app, the pet's clock jumps to the
+  current time and the last few minutes you were away are replayed, which takes
+  a few seconds at most. Bedtime and waking up still happen on the right side
+  of the jump, so you don't come back to a pet that's awake all night or asleep
+  all day. For the rest of the gap the pet doesn't age or get hungry. This needs
+  the in-game clock to be set. If you set it to a different time than the
+  Flipper's, that difference is kept. Set Offline time to Off in the menu to
+  freeze the pet and its clock while the app is closed, or press Back to skip
+  the replay.
 - 1x / 2x / 4x speed, solid or "LCD grid" pixel style
 
 ## Installing
@@ -76,8 +82,10 @@ ufbt update --index-url=https://up.unleashedflip.com/directory.json --channel=re
 `tools/` is not part of the Flipper build:
 
 - `host_test.c`: runs the core on a desktop. It can play a scripted button
-  sequence and dump screenshots, trace CPU state, or benchmark.
-  `gcc -O2 -Isrc tools/host_test.c src/e0c6200.c src/digimon_render.c -o host_test`
+  sequence and dump screenshots, trace CPU state, benchmark, or check that
+  skipping offline time leaves the pet asleep or awake the same way as
+  emulating it (`host_test clock <rom.bin>`).
+  `gcc -O2 -Isrc tools/host_test.c src/e0c6200.c src/digimon_render.c src/digimon_clock.c -o host_test`
 - `ref_trace.py`: prints the same trace format using BrickEmuPy's Python core,
   so you can diff the two implementations.
 - `gen_lcd_map.py`: regenerates `src/lcd_map.h` (which VRAM bit drives each LCD
@@ -89,6 +97,7 @@ ufbt update --index-url=https://up.unleashedflip.com/directory.json --channel=re
 |------|---------|
 | `src/e0c6200.c/.h` | E0C6200 CPU, timers, ports, buzzer. Platform independent. |
 | `src/digimon_render.c/.h` | LCD + icons to a 128x64 XBM framebuffer |
+| `src/digimon_clock.c/.h` | Reads, sets and skips ahead the ROM's time-of-day clock |
 | `src/lcd_map.h` | Generated VRAM-to-pixel map |
 | `src/digimon_app.c` | Flipper app: ROM picker, input, sound, saves, menu |
 

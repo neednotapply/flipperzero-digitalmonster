@@ -144,6 +144,10 @@ uint32_t e0c6200_step(E0C6200* cpu);
  * Returns early if `max_steps` instructions were executed (0 = no limit). */
 void e0c6200_run(E0C6200* cpu, uint32_t osc1_ticks, uint32_t max_steps);
 
+/* Run until the CPU is halted with no interrupt pending (or `max_steps`
+ * instructions have run), so RAM can be patched between game ticks. */
+void e0c6200_settle(E0C6200* cpu, uint32_t max_steps);
+
 E0CLcdMode e0c6200_lcd_mode(const E0C6200* cpu);
 
 /* Read a port as seen from outside the chip. */

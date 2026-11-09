@@ -57,4 +57,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: gcc -O2 -Wall -Wextra -Werror -Isrc tools/host_test.c src/e0c6200.c src/digimon_render.c -o host_test
+      - run: gcc -O2 -Wall -Wextra -Werror -Isrc tools/host_test.c src/e0c6200.c src/digimon_render.c src/digimon_clock.c -o host_test
