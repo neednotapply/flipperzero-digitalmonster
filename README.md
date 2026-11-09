@@ -46,12 +46,15 @@ starts it straight away. Otherwise you pick one from a list.
 | Up / Left    | A (top, select)      |
 | OK           | B (middle, confirm)  |
 | Down / Right | C (bottom, cancel)   |
-| Back         | Pause menu           |
-| Hold Back    | Save and exit        |
+| Tap Back     | C (bottom, cancel)   |
+| Hold Back    | Pause menu           |
+
+A Back tap reaches the pet as a short C press once you let go of Back, so it
+can't be held down like Down / Right can.
 
 The pause menu has Sound, Speed, LCD style, Offline time, a Controls reminder,
 **Reset Digimon** (presses the device's reset pin: the pet is lost and a new egg
-appears), and Save & exit.
+appears), and Save & exit, which is how you leave the app.
 
 On first start the pet shows `0:00 AM SET`. Set the clock as on the real toy:
 

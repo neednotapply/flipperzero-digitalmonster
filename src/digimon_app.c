@@ -9,7 +9,8 @@
  *   Up / Left    -> A (top button: select)
  *   OK           -> B (middle button: confirm)
  *   Down / Right -> C (bottom button: cancel)
- *   Back         -> pause menu, hold Back to save and exit
+ *   Back (tap)   -> C
+ *   Back (hold)  -> pause menu (Save & exit is in there)
  */
 #include <furi.h>
 #include <furi_hal.h>
@@ -52,6 +53,13 @@
 #define BTN_A 0x4
 #define BTN_B 0x2
 #define BTN_C 0x1
+
+/* A Back tap presses C for TAP_TICKS of emulated time (the ROM needs ~40 ms
+ * to notice a press), then leaves it up for TAP_GAP_TICKS so taps in quick
+ * succession still arrive as separate presses. */
+#define TAP_TICKS     (E0C_OSC1_HZ / 10u)
+#define TAP_GAP_TICKS (E0C_OSC1_HZ / 10u)
+#define TAP_QUEUE_MAX 4
 
 typedef enum {
     ScreenRomList,
@@ -128,6 +136,9 @@ typedef struct {
     uint8_t keys_down;
     uint8_t buttons;
     uint8_t speed;
+    uint8_t taps_queued; /* Back taps waiting to be sent as C presses */
+    bool tap_down; /* C is held down for a tap */
+    uint64_t tap_until; /* OSC1 tick when the tap press or the gap after it ends */
 
     /* Menu / messages */
     uint8_t menu_index;
@@ -337,6 +348,9 @@ static uint8_t key_button(InputKey key) {
 
 static void release_all_keys(DigimonApp* app) {
     app->keys_down = 0;
+    app->taps_queued = 0;
+    app->tap_down = false;
+    app->tap_until = 0;
     if(app->cpu) set_buttons(app, 0);
 }
 
@@ -344,7 +358,25 @@ static void update_buttons_from_keys(DigimonApp* app) {
     uint8_t buttons = 0;
     for(int k = 0; k < InputKeyMAX; k++)
         if(app->keys_down & (1 << k)) buttons |= key_button((InputKey)k);
+    if(app->tap_down) buttons |= BTN_C;
     set_buttons(app, buttons);
+}
+
+/* Steps a Back tap along: press C, hold it, let it go, wait, next tap. */
+static void tap_service(DigimonApp* app) {
+    uint64_t now = app->cpu->s.osc1_ticks;
+    if(app->tap_until && now < app->tap_until) return;
+    if(app->tap_down) {
+        app->tap_down = false;
+        app->tap_until = now + TAP_GAP_TICKS;
+    } else if(app->taps_queued) {
+        app->taps_queued--;
+        app->tap_down = true;
+        app->tap_until = now + TAP_TICKS;
+    } else {
+        app->tap_until = 0;
+    }
+    update_buttons_from_keys(app);
 }
 
 /* Re-render the framebuffer if the LCD changed. Returns true if it did. */
@@ -468,6 +500,9 @@ static void start_game(DigimonApp* app, uint8_t index) {
     uint32_t away = loaded && now > saved_at ? now - saved_at : 0;
     app->keys_down = 0;
     app->buttons = 0;
+    app->taps_queued = 0;
+    app->tap_down = false;
+    app->tap_until = 0;
     app->speed = 1;
     app->tick_rem = 0;
     app->last_tick = now_ms();
@@ -505,6 +540,7 @@ static void emu_tick(DigimonApp* app) {
     uint32_t ticks = (uint32_t)(t / 1000u);
     app->tick_rem = (uint32_t)(t % 1000u);
     if(ticks) e0c6200_run(app->cpu, ticks, 0);
+    if(app->tap_until || app->taps_queued) tap_service(app);
 
     sound_update(app);
     if(refresh_frame(app, false)) view_port_update(app->view_port);
@@ -784,12 +820,15 @@ static void save_and_leave(DigimonApp* app) {
 
 static void input_emu(DigimonApp* app, InputEvent* ev) {
     if(ev->key == InputKeyBack) {
+        /* tap: the toy's C button. hold: pause menu. The tap is only known
+         * once Back is let go, so C is pressed then, not on the press. */
         if(ev->type == InputTypeShort) {
+            if(app->taps_queued < TAP_QUEUE_MAX) app->taps_queued++;
+            tap_service(app);
+        } else if(ev->type == InputTypeLong) {
             release_all_keys(app);
             app->menu_index = MenuResume;
             app->screen = ScreenMenu;
-        } else if(ev->type == InputTypeLong) {
-            save_and_leave(app);
         }
         return;
     }
@@ -861,7 +900,7 @@ static void input_menu(DigimonApp* app, InputEvent* ev) {
             show_message(
                 app,
                 "Controls",
-                "Up/Left: A (select)\nOK: B (confirm)\nDown/Right: C (cancel)\nBack: menu, hold: save+exit",
+                "Up/Left: A (select)\nOK: B (confirm)\nDown/Right/Back: C (cancel)\nHold Back: this menu",
                 ScreenMenu);
             break;
         case MenuReset:
