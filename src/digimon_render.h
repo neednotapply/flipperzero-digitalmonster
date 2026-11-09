@@ -2,6 +2,10 @@
  * Renders the Digimon LCD (32x16 dots + 8 icons) into a 128x64 1-bit
  * framebuffer in XBM layout (LSB first, 16 bytes per row), which is what
  * canvas_draw_xbm() expects. Platform independent.
+ *
+ * Layout: the dot matrix is centred (96x48 at 3x). The menu icons sit in
+ * the 16 px columns either side of it: the toy's top row on the left, its
+ * bottom row on the right. The 8 px strips above and below stay free.
  */
 #pragma once
 

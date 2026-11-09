@@ -11,7 +11,9 @@ by azya52, so timing, sound and behavior match that emulator.
 ## Features
 
 - Runs Digimon Ver.1 / Ver.2 / Ver.3 ROM dumps (any `.bin` in the data folder)
-- 32x16 dot-matrix LCD scaled 3x, plus the 8 menu icons
+- 32x16 dot-matrix LCD scaled 3x, plus the 8 menu icons drawn close to their
+  real size in columns either side of it (the toy's top row on the left, its
+  bottom row on the right)
 - Buzzer sound through the Flipper speaker (Off / Low / High). Stealth mode mutes it.
 - Saves automatically on exit and every 5 minutes, one save per ROM
 - **Offline time**: when you reopen the app, the pet fast-forwards through the

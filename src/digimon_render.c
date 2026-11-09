@@ -3,23 +3,138 @@
 
 #include <string.h>
 
-/* 8x8 menu icons, MSB = leftmost pixel.
- * Order: top row  status, food, training, battle
- *        bottom   flush, lights, medical, call */
-static const uint8_t icon_bits[LCD_ICONS][8] = {
-    {0x66, 0xFF, 0xFF, 0xFF, 0x7E, 0x3C, 0x18, 0x00}, /* status: heart */
-    {0x3C, 0x7E, 0x7E, 0x7E, 0x3C, 0x18, 0x24, 0x24}, /* food: drumstick */
-    {0x00, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0x00}, /* training: dumbbell */
-    {0x81, 0x42, 0x24, 0x18, 0x18, 0x66, 0x42, 0x81}, /* battle: crossed swords */
-    {0x00, 0x66, 0x99, 0x00, 0x66, 0x99, 0x00, 0xFF}, /* flush: water */
-    {0x3C, 0x42, 0x81, 0x81, 0x42, 0x3C, 0x3C, 0x18}, /* lights: bulb */
-    {0x3C, 0x24, 0xE7, 0x81, 0x81, 0xE7, 0x24, 0x3C}, /* medical: cross */
-    {0x7E, 0x99, 0x99, 0x99, 0x81, 0x99, 0x7E, 0x20}, /* call: "!" bubble */
+/* Menu icons, redrawn from the printed icons on the Digimon Ver.1-3 LCD
+ * (BrickEmuPy face SVG) at close to their real size: on the toy they are
+ * about 4 dots tall, which is 12 px at our 3x scale.
+ * One string per row, '#' = lit pixel. Width and height can differ per
+ * icon (unused rows stay NULL), up to ICON_COL_W wide and ICON_MAX_H tall.
+ * Order: top row  status, food, training, battle  (left column)
+ *        bottom   flush, lights, medical, call    (right column) */
+#define ICON_MAX_H 12
+
+static const char* const icon_art[LCD_ICONS][ICON_MAX_H] = {
+    {
+        /* status: dial with five graduation marks and a needle */
+        "....#######....",
+        "..##.......##..",
+        ".#.....#.....#.",
+        "#....#.#.#....#",
+        "#.#..#...#..#.#",
+        ".#.#...#...#.#.",
+        ".#.....#.....#.",
+        ".#.....#.....#.",
+        "..#...###...#..",
+        "..#.........#..",
+        "...#########...",
+    },
+    {
+        /* food: spotted meat with a bone end at each side */
+        ".###..##.......",
+        ".#.#..#####....",
+        "##.##.#.####...",
+        "#..#..######...",
+        ".##..#####.#...",
+        "....####.###...",
+        "...##.########.",
+        "...#########..#",
+        "...####.####.##",
+        ".....#####.#.#.",
+        ".......##..###.",
+    },
+    {
+        /* training: punching a sandbag */
+        ".##....###.",
+        ".##....###.",
+        "####...###.",
+        "###........",
+        "###.######.",
+        "###....###.",
+        "####...###.",
+        "####...###.",
+        "####...#.#.",
+        "####..#..#.",
+        "####..#...#",
+        ".##....#..#",
+    },
+    {
+        /* battle: two fighters trading punches */
+        "...#....#..",
+        "..###..###.",
+        "..###..###.",
+        "...#....#..",
+        ".##..#####.",
+        ".###...###.",
+        ".######.##.",
+        ".###...###.",
+        ".##...##.#.",
+        ".#.#..#..#.",
+        "#..#..#...#",
+        "#...#.#...#",
+    },
+    {
+        /* flush: poop pile */
+        ".....#......",
+        ".....##.....",
+        "....####....",
+        "...#######..",
+        "............",
+        "..########..",
+        "..########..",
+        "............",
+        "##........##",
+        "############",
+        ".##########.",
+        "...######...",
+    },
+    {
+        /* lights: glowing bulb with a heart filament */
+        "......#......",
+        "..##.....##..",
+        "....#####....",
+        "##.#######.##",
+        "...#..#..#...",
+        "...#.#.#.#...",
+        "##.#.###.#.##",
+        "...##.#.##...",
+        "....##.##....",
+        ".##.......##.",
+        "....#####....",
+        ".....###.....",
+    },
+    {
+        /* medical: crossed bandages */
+        "..##....#...",
+        ".####..###..",
+        "##..####.##.",
+        "##..###...##",
+        ".#####...##.",
+        "..###...##..",
+        "..##...###..",
+        ".##...#####.",
+        "##...###..##",
+        ".##.####..##",
+        "..###..####.",
+        "...#....##..",
+    },
+    {
+        /* call: zaps into a shouting mouth */
+        ".......#.......",
+        ".......##......",
+        "..#....######..",
+        ".###...#######.",
+        "..###..########",
+        "...#.#...######",
+        ".....#.....####",
+        "..####...######",
+        "..###..#######.",
+        "##..#....####..",
+    },
 };
 
-#define ICON_SLOT_W (LCD_W * DIGIMON_LCD_SCALE / 4)
-#define ICON_TOP_Y  0
-#define ICON_BOT_Y  (DIGIMON_LCD_Y + LCD_H * DIGIMON_LCD_SCALE)
+/* The 8 px strips above and below the dot matrix are too small for the
+ * icons, so they go in the columns either side of it, one 16 px cell each. */
+#define ICON_COL_W  (DIGIMON_LCD_X - 1) /* keep a 1 px gap next to the LCD */
+#define ICON_CELL_H (DIGIMON_FB_H / 4)
 
 static inline void set_px(uint8_t* fb, int x, int y) {
     fb[y * (DIGIMON_FB_W / 8) + (x >> 3)] |= (uint8_t)(1 << (x & 7));
@@ -40,13 +155,17 @@ uint8_t digimon_icons(const E0C6200* cpu) {
 }
 
 static void draw_icon(uint8_t* fb, int index) {
-    int x0 = DIGIMON_LCD_X + (index % 4) * ICON_SLOT_W + (ICON_SLOT_W - 8) / 2;
-    int y0 = index < 4 ? ICON_TOP_Y : ICON_BOT_Y;
-    for(int y = 0; y < 8; y++) {
-        uint8_t row = icon_bits[index][y];
-        for(int x = 0; x < 8; x++)
-            if(row & (0x80 >> x)) set_px(fb, x0 + x, y0 + y);
-    }
+    const char* const* art = icon_art[index];
+    int w = (int)strlen(art[0]);
+    int h = 0;
+    while(h < ICON_MAX_H && art[h])
+        h++;
+    /* top-row icons on the left, bottom-row icons on the right, centred in their cell */
+    int x0 = (index < 4 ? 0 : DIGIMON_FB_W - ICON_COL_W) + (ICON_COL_W - w) / 2;
+    int y0 = (index % 4) * ICON_CELL_H + (ICON_CELL_H - h) / 2;
+    for(int y = 0; y < h; y++)
+        for(int x = 0; art[y][x]; x++)
+            if(art[y][x] == '#') set_px(fb, x0 + x, y0 + y);
 }
 
 void digimon_render(const E0C6200* cpu, uint8_t* fb, DigimonRenderStyle style) {

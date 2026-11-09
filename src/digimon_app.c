@@ -547,20 +547,23 @@ static void draw_rom_list(Canvas* canvas, DigimonApp* app) {
 
 static void draw_emu(Canvas* canvas, DigimonApp* app) {
     canvas_draw_xbm(canvas, 0, 0, DIGIMON_FB_W, DIGIMON_FB_H, app->fb);
+    /* status marks go in the free strips above / below the dot matrix,
+     * clear of the icon columns */
+    const int x = DIGIMON_LCD_X;
     canvas_set_font(canvas, FontKeyboard);
     if(app->speed > 1) {
         char buf[8];
         snprintf(buf, sizeof(buf), "%ux", app->speed);
-        canvas_draw_str(canvas, 0, 63, buf);
+        canvas_draw_str(canvas, x, 63, buf);
     }
     if(!sound_allowed(app)) {
         /* small crossed speaker */
-        canvas_draw_box(canvas, 1, 2, 2, 4);
-        canvas_draw_line(canvas, 3, 2, 5, 0);
-        canvas_draw_line(canvas, 3, 5, 5, 7);
-        canvas_draw_line(canvas, 5, 0, 5, 7);
-        canvas_draw_line(canvas, 7, 2, 10, 5);
-        canvas_draw_line(canvas, 10, 2, 7, 5);
+        canvas_draw_box(canvas, x + 1, 2, 2, 4);
+        canvas_draw_line(canvas, x + 3, 2, x + 5, 0);
+        canvas_draw_line(canvas, x + 3, 5, x + 5, 7);
+        canvas_draw_line(canvas, x + 5, 0, x + 5, 7);
+        canvas_draw_line(canvas, x + 7, 2, x + 10, 5);
+        canvas_draw_line(canvas, x + 10, 2, x + 7, 5);
     }
 }
 
