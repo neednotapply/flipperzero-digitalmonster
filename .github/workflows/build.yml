@@ -3,29 +3,58 @@ name: "Build Flipper Application Package (.fap)"
 on: [push, pull_request]
 
 jobs:
-  ufbt-build-action:
-    name: 'ufbt: Build for Dev branch'
+  ufbt-build:
+    name: "ufbt: ${{ matrix.name }}"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Momentum release
+            sdk-channel: release
+            sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
+          - name: Momentum dev
+            sdk-channel: dev
+            sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
+          - name: Unleashed release
+            sdk-channel: release
+            sdk-index-url: https://up.unleashedflip.com/directory.json
+          - name: Unleashed dev
+            sdk-channel: dev
+            sdk-index-url: https://up.unleashedflip.com/directory.json
+          - name: Official release
+            sdk-channel: release
+            sdk-index-url: ""
+          - name: Official dev
+            sdk-channel: dev
+            sdk-index-url: ""
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Build with ufbt
-        uses: flipperdevices/flipperzero-ufbt-action@v0.1.3
+        uses: flipperdevices/flipperzero-ufbt-action@v0.1
         id: build-app
         with:
-            sdk-channel: dev
-            ufbt-version: latest
+          sdk-channel: ${{ matrix.sdk-channel }}
+          sdk-index-url: ${{ matrix.sdk-index-url }}
 
-      - name: Upload FAP Artifacts
-        uses: actions/upload-artifact@v0.1.3
+      - name: Upload .fap artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.repository.name }}-${{ steps.build-app.outputs.suffix }}
           path: ${{ steps.build-app.outputs.fap-artifacts }}
 
-      - name: Lint Source Code
+      - name: Lint sources
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
         with:
           skip-setup: true
           task: lint
+
+  host-core:
+    name: "Core compiles on desktop"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: gcc -O2 -Wall -Wextra -Werror -Isrc tools/host_test.c src/e0c6200.c src/digimon_render.c -o host_test
